@@ -3,8 +3,67 @@
 
 # Importing Dependencies
 import numpy as np
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Iterable, Sequence, Callable
 from numpy.typing import ArrayLike
+
+
+def _collate(iterable: Iterable) -> Tuple[ArrayLike, ArrayLike]:
+    """
+    Transposes single element lists/tuples inside iterable along the reverse axis.
+    So, instead of getting n lists of (x, y) pairs we return an n-long array of xs and an n-long vector/matrix of ys
+
+    Args:
+        iterable (Iterable): iterable of lists/tuples to be transposed
+
+    Returns:
+        Tuple[ArrayLike, ArrayLike]: transposed elements of iterable
+    """
+
+    xs, ys = list(zip(*iterable))
+
+    xs = np.stack(xs)
+    ys = np.stack(ys)
+    assert len(xs) == len(
+        ys
+    ), "Collate fn did create equal length x and y matrices/vectors."
+
+    assert len(xs) != 0, "Collating fn got an empty input"
+
+    return xs, ys
+
+
+def _batch_iterable(
+    iterable: Iterable, n: int, collate_fn: Callable = _collate
+) -> List[Tuple[ArrayLike, ArrayLike]]:
+    """
+    From an iterable, returns chunks of `iterable` that are n or less sized. If we reach the end of
+    the iterable and the remaining length data are of size less than n, we return that size list.
+
+    Args:
+        iterable (Iterable): any iterable
+        n (int): max size of returned batches
+
+    Yields:
+        List[List[ArrayLike, ArrayLike]]: within this module, used to return a list of lists of arrays that are (x, y) pairs
+
+    """
+
+    batch_count = 0
+    batch = []
+
+    for item in iterable:
+        batch.append(item)
+        batch_count += 1
+
+        if batch_count == n:
+            yield collate_fn(batch)  # will receive a list of lists and transpose it
+
+            # reset batch counters
+            batch_count = 0
+            batch = []
+
+    if batch:  # in case we have an uneven size batch
+        yield collate_fn(batch)
 
 
 # Neural Network Class Definition
@@ -33,13 +92,16 @@ class NeuralNetwork:
         arch: list of dicts
             This list of dictionaries describing the fully connected layers of the artificial neural network.
     """
-    def __init__(self,
-                 nn_arch: List[Dict[str, int]],
-                 lr: float,
-                 seed: int,
-                 batch_size: int,
-                 epochs: int,
-                 loss_function: str):
+
+    def __init__(
+        self,
+        nn_arch: List[Dict[str, int]],
+        lr: float,
+        seed: int,
+        batch_size: int,
+        epochs: int,
+        loss_function: str,
+    ):
         # Saving architecture
         self.arch = nn_arch
         # Saving hyperparameters
@@ -70,19 +132,19 @@ class NeuralNetwork:
         # initializing all layers in the NN
         for idx, layer in enumerate(self.arch):
             layer_idx = idx + 1
-            input_dim = layer['input_dim']
-            output_dim = layer['output_dim']
+            input_dim = layer["input_dim"]
+            output_dim = layer["output_dim"]
             # initializing weight matrices
-            param_dict['W' + str(layer_idx)] = np.random.randn(output_dim, input_dim) * 0.1
+            param_dict["W" + str(layer_idx)] = (
+                np.random.randn(output_dim, input_dim) * 0.1
+            )
             # initializing bias matrices
-            param_dict['b' + str(layer_idx)] = np.random.randn(output_dim, 1) * 0.1
+            param_dict["b" + str(layer_idx)] = np.random.randn(output_dim, 1) * 0.1
         return param_dict
 
-    def _single_forward(self,
-                        W_curr: ArrayLike,
-                        b_curr: ArrayLike,
-                        A_prev: ArrayLike,
-                        activation: str) -> Tuple[ArrayLike, ArrayLike]:
+    def _single_forward(
+        self, W_curr: ArrayLike, b_curr: ArrayLike, A_prev: ArrayLike, activation: str
+    ) -> Tuple[ArrayLike, ArrayLike]:
         """
         This method is used for a single forward pass on a single layer.
 
@@ -118,15 +180,17 @@ class NeuralNetwork:
             cache: Dict[str, ArrayLike]:
                 Dictionary storing Z and A matrices from `_single_forward` for use in backprop.
         """
-        pass
 
-    def _single_backprop(self,
-                         W_curr: ArrayLike,
-                         b_curr: ArrayLike,
-                         Z_curr: ArrayLike,
-                         A_prev: ArrayLike,
-                         dA_curr: ArrayLike,
-                         activation_curr: str) -> Tuple[ArrayLike, ArrayLike, ArrayLike]:
+    def _single_backprop(
+        self,
+        W_curr: ArrayLike,
+        b_curr: ArrayLike,
+        Z_curr: ArrayLike,
+        A_prev: ArrayLike,
+        dA_curr: ArrayLike,
+        activation_curr: str,
+    ) -> Tuple[ArrayLike, ArrayLike, ArrayLike]:
+
         """
         This method is used for a single backprop pass on a single layer.
 
@@ -187,11 +251,14 @@ class NeuralNetwork:
         """
         pass
 
-    def fit(self,
-            X_train: ArrayLike,
-            y_train: ArrayLike,
-            X_val: ArrayLike,
-            y_val: ArrayLike) -> Tuple[List[float], List[float]]:
+    def _eval_loader(self, X: ArrayLike, y: ArrayLike, train: bool = True):
+        losses = []
+        for x, y in _batch_iterable(zip(X, y)):
+            pass
+
+    def fit(
+        self, X_train: ArrayLike, y_train: ArrayLike, X_val: ArrayLike, y_val: ArrayLike
+    ) -> Tuple[List[float], List[float]]:
         """
         This function trains the neural network via training for the number of epochs defined at
         the initialization of this class instance.
@@ -211,7 +278,6 @@ class NeuralNetwork:
             per_epoch_loss_val: List[float]
                 List of per epoch loss for validation set.
         """
-        pass
 
     def predict(self, X: ArrayLike) -> ArrayLike:
         """
@@ -303,7 +369,9 @@ class NeuralNetwork:
         """
         pass
 
-    def _binary_cross_entropy_backprop(self, y: ArrayLike, y_hat: ArrayLike) -> ArrayLike:
+    def _binary_cross_entropy_backprop(
+        self, y: ArrayLike, y_hat: ArrayLike
+    ) -> ArrayLike:
         """
         Binary cross entropy loss function derivative.
 

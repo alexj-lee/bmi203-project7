@@ -22,7 +22,7 @@ def one_hot_encode_seqs(seq_arr: List[str]) -> ArrayLike:
             Array of encoded sequences, with each encoding 4x as long as the input sequence
             length due to the one hot encoding scheme for nucleic acids.
 
-            For example, if we encode 
+            For example, if we encode
                 A -> [1, 0, 0, 0]
                 T -> [0, 1, 0, 0]
                 C -> [0, 0, 1, 0]
@@ -32,13 +32,11 @@ def one_hot_encode_seqs(seq_arr: List[str]) -> ArrayLike:
     pass
 
 
-def sample_seqs(
-        seqs: List[str]
-        labels: List[bool]) -> Tuple[List[seq], List[bool]]:
+def sample_seqs(seqs: List[str], labels: List[bool]) -> Tuple[List[str], List[bool]]:
     """
-    This function should sample your sequences to account for class imbalance. 
+    This function should sample your sequences to account for class imbalance.
     Consider this as a sampling scheme with replacement.
-    
+
     Args:
         seqs: List[str]
             List of all sequences.
