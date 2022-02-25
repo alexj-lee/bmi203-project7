@@ -209,7 +209,8 @@ class NeuralNetwork:
                 Current layer linear transformed matrix.
         """
 
-        z = A_prev.dot(W_curr.T) + b_curr
+        z = A_prev.dot(W_curr.T)
+        z += b_curr.T
         if activation:
             if activation == "sigmoid":
                 a = self._sigmoid(z)
@@ -254,6 +255,7 @@ class NeuralNetwork:
             a, z = self._single_forward(W, b, _a, activation)
             backprop_dict[f"a{layeridx+1}"] = a
             backprop_dict[f"z{layeridx+1}"] = z
+            _a = a
 
         return a, backprop_dict
 
@@ -264,7 +266,7 @@ class NeuralNetwork:
         Z_curr: ArrayLike,
         A_prev: ArrayLike,
         dA_curr: ArrayLike,
-        activation_curr: str,
+        activation: str,
     ) -> Tuple[ArrayLike, ArrayLike, ArrayLike]:
 
         """
@@ -292,16 +294,20 @@ class NeuralNetwork:
             db_curr: ArrayLike
                 Partial derivative of loss function with respect to current layer bias matrix.
         """
-        if activation == 'sigmoid':
-            dAC_dA = self._sigmoid_backprop(dA_curr, Z_curr) * dA_curr
-        elif activation == 'relu':
-            _dAC = self._sigmoid_backprop(dA_curr, Z_curr) * dA_curr
+        if activation == "sigmoid":
+            dA_dZ = self._sigmoid_backprop(dA_curr, Z_curr)
+        elif activation == "relu":
+            dA_dZ = self._relu_backprop(dA_curr, Z_curr)
         else:
-            _dAC = dA_curr
+            dA_dZ = A_prev
 
-        W_curr = _dA * W_curr
-        b_curr = _dA
-
+        dA_prev = dA_dZ * dA_curr  # dLoss / dActivation * dActivation / dZ
+        print("wcurr", W_curr.shape, "daprev", dA_prev.shape)
+        dW_curr = dA_prev.copy()
+        print(dW_curr.shape)
+        print()
+        db_curr = dA_prev.copy()
+        return dA_prev, dW_curr, db_curr
 
     def backprop(self, y: ArrayLike, y_hat: ArrayLike, cache: Dict[str, ArrayLike]):
         """
@@ -321,7 +327,12 @@ class NeuralNetwork:
                 Dictionary containing the gradient information from this pass of backprop.
         """
 
-        loss, _dA = self._get_loss(self, y_hat, y, self._loss_func, return_derivative=True)
+        loss, _dA = self._get_loss(
+            y_hat, y, self._loss_func, return_derivative=True
+        )  # derivative of loss wrt activations
+
+        print("loss, da", loss.shape, _dA.shape)
+
         grad_dict = {}
 
         for layeridx in reversed(range(self.n_layers)):
@@ -337,14 +348,12 @@ class NeuralNetwork:
             a = cache[a_key]
             z = cache[z_key]
 
-            activation = self._activations[activation_key]
+            activation = self._param_dict[activation_key]
 
-            dA, dW, db = self._single_backprop(W, b, z, a, _dA, activation)
+            _dA, dW, db = self._single_backprop(W, b, z, a, _dA, activation)
             grad_dict[w_key] = dW
             grad_dict[b_key] = db
-            
-            _dA = dA
-        
+
         return grad_dict
 
     def _update_params(self, grad_dict: Dict[str, ArrayLike]):
@@ -359,9 +368,15 @@ class NeuralNetwork:
         Returns:
             None
         """
-        pass
+        for layeridx in range(self.n_layers):
+            w_key = f"W{layeridx+1}"
+            b_key = f"b{layeridx+1}"
 
-    def _get_loss(self, y_hat: ArrayLike, y: ArrayLike, loss: str, return_derivative=True):
+    #            self._param_dict[w_key] += self._lr * self.
+
+    def _get_loss(
+        self, y_hat: ArrayLike, y: ArrayLike, loss: str, return_derivative=True
+    ):
 
         losses = []
         assert self._loss_func in [
@@ -381,27 +396,26 @@ class NeuralNetwork:
         if return_derivative:
             if self._loss_func == "mse":
                 derivative = self._mean_square_error_backprop(y, y_hat)
-            if self._loss_func == 'ce':
-                derivative = self._binary_cross_entropy(y, y_hat)
+            if self._loss_func == "ce":
+                derivative = self._binary_cross_entropy_backprop(y, y_hat)
             return losses, derivative
-        
+
         return losses
 
     def _eval_loader(self, X: ArrayLike, y: ArrayLike, train: bool = True):
 
         losses = []
-        for x, y in _batch_iterable(zip(X, y)):
+        for x, y in _batch_iterable(zip(X, y), self._batch_size):
             x, back_dict = self.forward(x)
 
             if train:
-                grad_dict = self._backprop(y, x, back_dict)
+                grad_dict = self.backprop(y, x, back_dict)
                 self._update_params({})
 
             else:
                 losses = self._get_loss(x, y, self._loss_func)
 
         return losses
-
 
     def fit(
         self, X_train: ArrayLike, y_train: ArrayLike, X_val: ArrayLike, y_val: ArrayLike
@@ -462,7 +476,7 @@ class NeuralNetwork:
         negative_mask = ~positive_mask
 
         exp_z = np.exp(Z[negative_mask])
-        z_sigmoid[~negative_mask] = exp_z / (exp_z + 1)
+        z_sigmoid[negative_mask] = exp_z / (exp_z + 1)
         z_sigmoid[positive_mask] = 1 / (1 + np.exp(-Z[positive_mask]))
 
         return z_sigmoid
@@ -495,11 +509,15 @@ class NeuralNetwork:
             dZ: ArrayLike
                 Partial derivative of current layer Z matrix.
         """
-        sigmoid = self._sigmoid(Z)
+        sigmoid = self._sigmoid(dA)
         activation_derivative = sigmoid * (1 - sigmoid)
-        z_derivative = np.full(dA.shape, activation_derivative)
-        z_derivative *= dA
-        return z_derivative
+
+        print()
+        print("actn deriv", activation_derivative.shape)
+        print("z", Z.shape, "a", dA.shape)
+
+        # z_derivative = np.full(Z.shape, activation_derivative)
+        return activation_derivative
 
     def _relu_backprop(self, dA: ArrayLike, Z: ArrayLike) -> ArrayLike:
         """
