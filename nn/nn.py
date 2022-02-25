@@ -6,7 +6,7 @@ import numpy as np
 from typing import List, Dict, Tuple, Iterable, Callable, Optional
 from numpy.typing import ArrayLike
 
-__VALID_ACTIVATIONS = ["sigmoid", "relu"]
+VALID_ACTIVATIONS = ["sigmoid", "relu"]
 
 
 def _collate(iterable: Iterable) -> Tuple[ArrayLike, ArrayLike]:
@@ -103,7 +103,7 @@ class NeuralNetwork:
         batch_size: int,
         epochs: int,
         loss_function: str,
-        activations: Optional[List[str]],
+        activations: Optional[List[str]] = None,
     ):
 
         # inputhandling for activations argument
@@ -116,13 +116,14 @@ class NeuralNetwork:
             if len(activations) != len(nn_arch):
                 raise ValueError("Activations must be same length as architecture.")
 
+            self._activations = []
             for activation in activations:
                 if activation is None:
                     self._activations.append(None)
-                if type(activation) == str:
+                elif type(activation) == str:
                     activation_lower = activation.lower()
 
-                    if activation_lower not in __VALID_ACTIVATIONS:
+                    if activation_lower not in VALID_ACTIVATIONS:
                         raise NotImplementedError(
                             f"Activation {activation} not implemented."
                         )
@@ -134,6 +135,7 @@ class NeuralNetwork:
         # input handling for loss fn
         try:
             loss_lower = loss_function.lower()
+            self._loss_func = loss_lower
         except:
             raise TypeError("Argument loss_functions must be a string.")
 
@@ -206,6 +208,7 @@ class NeuralNetwork:
             Z_curr: ArrayLike
                 Current layer linear transformed matrix.
         """
+
         z = A_prev.dot(W_curr.T) + b_curr
         if activation:
             if activation == "sigmoid":
@@ -289,7 +292,16 @@ class NeuralNetwork:
             db_curr: ArrayLike
                 Partial derivative of loss function with respect to current layer bias matrix.
         """
-        pass
+        if activation == 'sigmoid':
+            dAC_dA = self._sigmoid_backprop(dA_curr, Z_curr) * dA_curr
+        elif activation == 'relu':
+            _dAC = self._sigmoid_backprop(dA_curr, Z_curr) * dA_curr
+        else:
+            _dAC = dA_curr
+
+        W_curr = _dA * W_curr
+        b_curr = _dA
+
 
     def backprop(self, y: ArrayLike, y_hat: ArrayLike, cache: Dict[str, ArrayLike]):
         """
@@ -308,7 +320,32 @@ class NeuralNetwork:
             grad_dict: Dict[str, ArrayLike]
                 Dictionary containing the gradient information from this pass of backprop.
         """
-        pass
+
+        loss, _dA = self._get_loss(self, y_hat, y, self._loss_func, return_derivative=True)
+        grad_dict = {}
+
+        for layeridx in reversed(range(self.n_layers)):
+            w_key = f"W{layeridx+1}"
+            b_key = f"b{layeridx+1}"
+            activation_key = f"f{layeridx+1}"
+            a_key = f"a{layeridx+1}"
+            z_key = f"z{layeridx+1}"
+
+            W = self._param_dict[w_key]
+            b = self._param_dict[b_key]
+
+            a = cache[a_key]
+            z = cache[z_key]
+
+            activation = self._activations[activation_key]
+
+            dA, dW, db = self._single_backprop(W, b, z, a, _dA, activation)
+            grad_dict[w_key] = dW
+            grad_dict[b_key] = db
+            
+            _dA = dA
+        
+        return grad_dict
 
     def _update_params(self, grad_dict: Dict[str, ArrayLike]):
         """
@@ -324,27 +361,47 @@ class NeuralNetwork:
         """
         pass
 
+    def _get_loss(self, y_hat: ArrayLike, y: ArrayLike, loss: str, return_derivative=True):
+
+        losses = []
+        assert self._loss_func in [
+            "mse",
+            "ce",
+        ], 'Loss function was unmapped from "mse" or "ce"; replace with one of those to continue.'
+
+        if self._loss_func == "mse":
+            loss = self._mean_squared_error(y, y_hat)
+        elif self._loss_func == "ce":
+            loss = self._binary_cross_entropy(y, y_hat)
+
+        losses.append(loss)
+
+        losses = np.mean(losses)
+
+        if return_derivative:
+            if self._loss_func == "mse":
+                derivative = self._mean_square_error_backprop(y, y_hat)
+            if self._loss_func == 'ce':
+                derivative = self._binary_cross_entropy(y, y_hat)
+            return losses, derivative
+        
+        return losses
+
     def _eval_loader(self, X: ArrayLike, y: ArrayLike, train: bool = True):
 
         losses = []
         for x, y in _batch_iterable(zip(X, y)):
             x, back_dict = self.forward(x)
-            #
-            #            assert self._loss_func in [
-            #                "mse",
-            #                "ce",
-            #            ], 'Loss function was unmapped from "mse" or "ce"; replace with one of those to continue.'
-            #            if self._loss_func == "mse":
-            #                loss = self._mean_squared_error(x, y)
-            #            elif self._loss_func == "ce":
-            #                loss = self._binary_cross_entropy(x, y)
-            #
-            #            losses.append(loss)
-            #
+
             if train:
                 grad_dict = self._backprop(y, x, back_dict)
+                self._update_params({})
+
+            else:
+                losses = self._get_loss(x, y, self._loss_func)
 
         return losses
+
 
     def fit(
         self, X_train: ArrayLike, y_train: ArrayLike, X_val: ArrayLike, y_val: ArrayLike
