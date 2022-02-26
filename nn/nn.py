@@ -180,10 +180,10 @@ class NeuralNetwork:
             output_dim = layer["output_dim"]
             # initializing weight matrices
             param_dict["W" + str(layer_idx)] = (
-                np.random.randn(output_dim, input_dim) * 0.1
+                np.random.randn(output_dim, input_dim) * 0.01
             )
             # initializing bias matrices
-            param_dict["b" + str(layer_idx)] = np.random.randn(output_dim, 1) * 0.1
+            param_dict["b" + str(layer_idx)] = np.random.randn(output_dim, 1) * 0.01
         return param_dict
 
     def _single_forward(
@@ -220,7 +220,7 @@ class NeuralNetwork:
                 raise ValueError(
                     f'Activation {activation} was passed into _single_forward but was not one of "sigmoid", "relu" and could not be mapped to a function.'
                 )
-        else:
+        else:  # no activations
             a = z.copy()
 
         return a, z
@@ -243,6 +243,7 @@ class NeuralNetwork:
         _a = X
         backprop_dict = {}
 
+        backprop_dict["a0"] = X
         for layeridx in range(self.n_layers):
             w_key = f"W{layeridx+1}"
             b_key = f"b{layeridx+1}"
@@ -299,14 +300,13 @@ class NeuralNetwork:
         elif activation == "relu":
             dA_dZ = self._relu_backprop(dA_curr, Z_curr)
         else:
-            dA_dZ = A_prev
+            dA_dZ = dA_curr
 
-        dA_prev = dA_dZ * dA_curr  # dLoss / dActivation * dActivation / dZ
-        print("wcurr", W_curr.shape, "daprev", dA_prev.shape)
-        dW_curr = dA_prev.copy()
-        print(dW_curr.shape)
-        print()
-        db_curr = dA_prev.copy()
+        dA_prev = dA_dZ.dot(W_curr)
+        dW_curr = A_prev.T.dot(dA_dZ)
+        db_curr = dA_dZ.sum(0)[:, None]
+
+        dA_prev = dA_dZ.dot(W_curr)
         return dA_prev, dW_curr, db_curr
 
     def backprop(self, y: ArrayLike, y_hat: ArrayLike, cache: Dict[str, ArrayLike]):
@@ -331,15 +331,18 @@ class NeuralNetwork:
             y_hat, y, self._loss_func, return_derivative=True
         )  # derivative of loss wrt activations
 
-        print("loss, da", loss.shape, _dA.shape)
+        _dA = _dA
 
         grad_dict = {}
+        grad_dict["_dA"] = _dA
+        grad_dict["y"] = y
+        grad_dict["yhat"] = y_hat
 
         for layeridx in reversed(range(self.n_layers)):
             w_key = f"W{layeridx+1}"
             b_key = f"b{layeridx+1}"
             activation_key = f"f{layeridx+1}"
-            a_key = f"a{layeridx+1}"
+            a_key = f"a{layeridx}"
             z_key = f"z{layeridx+1}"
 
             W = self._param_dict[w_key]
@@ -350,9 +353,27 @@ class NeuralNetwork:
 
             activation = self._param_dict[activation_key]
 
+            #            print(
+            #                "w",
+            #                W.shape,
+            #                "b",
+            #                b.shape,
+            #                "z",
+            #                z.shape,
+            #                "a",
+            #                a.shape,
+            #                "da",
+            #                _dA.shape,
+            #                "bkey",
+            #                b_key,
+            #            )
+            #
             _dA, dW, db = self._single_backprop(W, b, z, a, _dA, activation)
             grad_dict[w_key] = dW
             grad_dict[b_key] = db
+            self.grad_dict = grad_dict
+
+        grad_dict["loss"] = loss
 
         return grad_dict
 
@@ -368,14 +389,17 @@ class NeuralNetwork:
         Returns:
             None
         """
+
         for layeridx in range(self.n_layers):
             w_key = f"W{layeridx+1}"
             b_key = f"b{layeridx+1}"
 
-    #            self._param_dict[w_key] += self._lr * self.
+            self._param_dict[w_key] += self._lr * grad_dict[w_key].T
+            self._param_dict[b_key] += self._lr * grad_dict[b_key]
+            # print("updated", self._lr, self._lr * grad_dict[w_key].T)
 
     def _get_loss(
-        self, y_hat: ArrayLike, y: ArrayLike, loss: str, return_derivative=True
+        self, y_hat: ArrayLike, y: ArrayLike, loss: str, return_derivative=False
     ):
 
         losses = []
@@ -395,7 +419,7 @@ class NeuralNetwork:
 
         if return_derivative:
             if self._loss_func == "mse":
-                derivative = self._mean_square_error_backprop(y, y_hat)
+                derivative = self._mean_squared_error_backprop(y, y_hat)
             if self._loss_func == "ce":
                 derivative = self._binary_cross_entropy_backprop(y, y_hat)
             return losses, derivative
@@ -407,15 +431,20 @@ class NeuralNetwork:
         losses = []
         for x, y in _batch_iterable(zip(X, y), self._batch_size):
             x, back_dict = self.forward(x)
+            self.back_dict = back_dict
 
             if train:
                 grad_dict = self.backprop(y, x, back_dict)
-                self._update_params({})
+                self.grad_dict = grad_dict
+                self._update_params(grad_dict)
+                batch_loss = grad_dict["loss"]
 
             else:
-                losses = self._get_loss(x, y, self._loss_func)
+                batch_loss = self._get_loss(x, y, self._loss_func)
 
-        return losses
+            losses.append(batch_loss)
+
+        return np.mean(losses)
 
     def fit(
         self, X_train: ArrayLike, y_train: ArrayLike, X_val: ArrayLike, y_val: ArrayLike
@@ -440,8 +469,15 @@ class NeuralNetwork:
                 List of per epoch loss for validation set.
         """
 
-        train_losses = self._eval_loader(X_train, y_train)
-        test_losses = self._eval_loader(X_val, y_val)
+        train_losses = []
+        test_losses = []
+        for epoch in range(self._epochs):
+            train_loss = self._eval_loader(X_train, y_train, train=True)
+            test_loss = self._eval_loader(X_val, y_val, train=False)
+
+            print(train_loss, test_loss)
+            train_losses.append(train_loss)
+            test_losses.append(test_loss)
         return train_losses, test_losses
 
     def predict(self, X: ArrayLike) -> ArrayLike:
@@ -472,7 +508,7 @@ class NeuralNetwork:
         """
 
         z_sigmoid = np.zeros_like(Z)
-        positive_mask = Z > 0
+        positive_mask = Z >= 0
         negative_mask = ~positive_mask
 
         exp_z = np.exp(Z[negative_mask])
@@ -509,15 +545,10 @@ class NeuralNetwork:
             dZ: ArrayLike
                 Partial derivative of current layer Z matrix.
         """
-        sigmoid = self._sigmoid(dA)
+        sigmoid = self._sigmoid(Z)
         activation_derivative = sigmoid * (1 - sigmoid)
 
-        print()
-        print("actn deriv", activation_derivative.shape)
-        print("z", Z.shape, "a", dA.shape)
-
-        # z_derivative = np.full(Z.shape, activation_derivative)
-        return activation_derivative
+        return activation_derivative * dA
 
     def _relu_backprop(self, dA: ArrayLike, Z: ArrayLike) -> ArrayLike:
         """
@@ -533,10 +564,9 @@ class NeuralNetwork:
             dZ: ArrayLike
                 Partial derivative of current layer Z matrix.
         """
-        activation_derivative = np.where(dA > 1, 1, 0)
-        z_derivative = np.full(dA.shape, activation_derivative)
-        z_derivative *= z_derivative
-        return z_derivative
+        activation_derivative = np.where(Z > 0, 1, 0)
+
+        return activation_derivative * dA
 
     def _binary_cross_entropy(self, y: ArrayLike, y_hat: ArrayLike) -> float:
         """
@@ -593,6 +623,8 @@ class NeuralNetwork:
                 Average loss of mini-batch.
         """
         loss = np.power(y - y_hat, 2)
+
+        # print(y.shape, "dims")
         return loss.mean()
 
     def _mean_squared_error_backprop(self, y: ArrayLike, y_hat: ArrayLike) -> ArrayLike:
@@ -609,7 +641,8 @@ class NeuralNetwork:
             dA: ArrayLike
                 partial derivative of loss with respect to A matrix.
         """
-        return 2 * np.mean(y - y_hat)
+        loss = 2 * (y - y_hat) / y.size
+        return loss
 
     def _loss_function(self, y: ArrayLike, y_hat: ArrayLike) -> float:
         """
