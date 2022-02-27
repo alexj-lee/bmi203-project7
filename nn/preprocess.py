@@ -6,6 +6,12 @@ import numpy as np
 from typing import List, Tuple
 from numpy.typing import ArrayLike
 
+NUC_MAPPER = {
+    "A": [1, 0, 0, 0],
+    "T": [0, 1, 0, 0],
+    "C": [0, 0, 1, 0],
+    "G": [0, 0, 0, 1],
+}
 
 # Defining preprocessing functions
 def one_hot_encode_seqs(seq_arr: List[str]) -> ArrayLike:
@@ -29,7 +35,17 @@ def one_hot_encode_seqs(seq_arr: List[str]) -> ArrayLike:
                 G -> [0, 0, 0, 1]
             Then, AGA -> [1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0]
     """
-    pass
+
+    encodings = []
+    for seq in seq_arr:
+        encoding = list(
+            map(NUC_MAPPER.get, seq)
+        )  # for each element in seq, replace with the value from NUC_MAPPER
+        # will generate a list of lists with only one index hot for each seq
+
+        encodings.append(np.array(encoding).flatten())
+
+    return encodings
 
 
 def sample_seqs(seqs: List[str], labels: List[bool]) -> Tuple[List[str], List[bool]]:
@@ -49,4 +65,5 @@ def sample_seqs(seqs: List[str], labels: List[bool]) -> Tuple[List[str], List[bo
         sampled_labels: List[bool]
             List of labels for the sampled sequences
     """
-    pass
+    
+    

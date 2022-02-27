@@ -139,7 +139,7 @@ class NeuralNetwork:
         except:
             raise TypeError("Argument loss_functions must be a string.")
 
-        if loss_lower not in ["mse", "ce"]:
+        if self._loss_func not in ["mse", "ce"]:
             raise ValueError('Loss must be one of "mse" or "ce".')
 
         # Saving architecture
@@ -156,6 +156,12 @@ class NeuralNetwork:
 
         for idx, activation in enumerate(self._activations):
             self._param_dict[f"f{idx+1}"] = activation
+
+        if self._loss_func == "ce" and self._param_dict[f"f{idx+1}"] != "sigmoid":
+            self._param_dict[f"f{idx+1}"] = "sigmoid"
+            print(
+                "For cross entropy loss last activation must be sigmoid. Changing last activation to sigmoid."
+            )
 
     def _init_params(self) -> Dict[str, ArrayLike]:
         """
@@ -180,10 +186,10 @@ class NeuralNetwork:
             output_dim = layer["output_dim"]
             # initializing weight matrices
             param_dict["W" + str(layer_idx)] = (
-                np.random.randn(output_dim, input_dim) * 0.01
+                np.random.randn(output_dim, input_dim) * 0.1
             )
             # initializing bias matrices
-            param_dict["b" + str(layer_idx)] = np.random.randn(output_dim, 1) * 0.01
+            param_dict["b" + str(layer_idx)] = np.random.randn(output_dim, 1) * 0.1
         return param_dict
 
     def _single_forward(
@@ -408,6 +414,11 @@ class NeuralNetwork:
             "ce",
         ], 'Loss function was unmapped from "mse" or "ce"; replace with one of those to continue.'
 
+        if y.ndim == 1:
+            y = y.reshape(
+                -1, 1
+            )  # will reshape to (1, n) so that loss calcs dont add extra axis
+
         if self._loss_func == "mse":
             loss = self._mean_squared_error(y, y_hat)
         elif self._loss_func == "ce":
@@ -436,11 +447,11 @@ class NeuralNetwork:
             if train:
                 grad_dict = self.backprop(y, x, back_dict)
                 self.grad_dict = grad_dict
-                self._update_params(grad_dict)
+                # self._update_params(grad_dict)
                 batch_loss = grad_dict["loss"]
 
             else:
-                batch_loss = self._get_loss(x, y, self._loss_func)
+                batch_loss = self._get_loss(y, x, self._loss_func)
 
             losses.append(batch_loss)
 
@@ -568,7 +579,9 @@ class NeuralNetwork:
 
         return activation_derivative * dA
 
-    def _binary_cross_entropy(self, y: ArrayLike, y_hat: ArrayLike) -> float:
+    def _binary_cross_entropy(
+        self, y: ArrayLike, y_hat: ArrayLike, eps: float = 1e-6
+    ) -> float:
         """
         Binary cross entropy loss function.
 
@@ -582,11 +595,10 @@ class NeuralNetwork:
             loss: float
                 Average loss over mini-batch.
         """
-        exp_sum = np.exp(y_hat)
-        softmax_probs = exp_sum / exp_sum.sum()
+        assert 0 <= np.min(y) <= np.max(y) <= 1, "Inputs must be between 0 and 1"
 
-        loss = y * np.log(softmax_probs)
-        return -loss
+        loss = (1 - y) * np.log(1 - y_hat + eps) + y * np.log(y_hat + eps)
+        return -loss.mean()
 
     def _binary_cross_entropy_backprop(
         self, y: ArrayLike, y_hat: ArrayLike
@@ -604,9 +616,11 @@ class NeuralNetwork:
             dA: ArrayLike
                 partial derivative of loss with respect to A matrix.
         """
-        exp_sum = np.exp(y_hat)
-        softmax_probs = exp_sum / exp_sum.sum()
-        return softmax_probs - y
+
+        derivative = (1 - y) / (1 - y_hat) - (y / y_hat)
+        derivative /= y.size
+
+        return derivative
 
     def _mean_squared_error(self, y: ArrayLike, y_hat: ArrayLike) -> float:
         """
@@ -624,7 +638,6 @@ class NeuralNetwork:
         """
         loss = np.power(y - y_hat, 2)
 
-        # print(y.shape, "dims")
         return loss.mean()
 
     def _mean_squared_error_backprop(self, y: ArrayLike, y_hat: ArrayLike) -> ArrayLike:
@@ -641,8 +654,9 @@ class NeuralNetwork:
             dA: ArrayLike
                 partial derivative of loss with respect to A matrix.
         """
-        loss = 2 * (y - y_hat) / y.size
-        return loss
+
+        derivative = 2 * (y - y_hat) / y.size
+        return derivative
 
     def _loss_function(self, y: ArrayLike, y_hat: ArrayLike) -> float:
         """
