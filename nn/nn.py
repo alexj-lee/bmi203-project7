@@ -595,7 +595,10 @@ class NeuralNetwork:
             loss: float
                 Average loss over mini-batch.
         """
-        assert 0 <= np.min(y) <= np.max(y) <= 1, "Inputs must be between 0 and 1"
+
+        assert (
+            0 <= np.min(y_hat) <= np.max(y_hat) <= 1
+        ), "Inputs must be between 0 and 1"
 
         loss = (1 - y) * np.log(1 - y_hat + eps) + y * np.log(y_hat + eps)
         return -loss.mean()

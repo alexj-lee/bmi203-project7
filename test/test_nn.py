@@ -79,35 +79,76 @@ def test_predict():
 
 def test_binary_cross_entropy(network):
     np.random.seed(0)
-    logits = np.random.randn(10, 2)
-    target = np.ones(10).reshape(-1, 1)
+    logits = np.clip(np.random.randn(10, 2), 1e-5, 1 - 1e-5)
+    target = np.zeros((10, 2))
+    target[:5, 0] = 1
+    target[5:, 1] = 1
 
-    loss = network._binary_cross_entropy(logits, target)
-    assert np.isclose(loss, 1.3109413466424518)
+    loss = network._binary_cross_entropy(target, logits)
+    assert np.isclose(
+        loss, 3.197688
+    ), "Binary cross entropy loss computation not close to manually calculated value"
 
 
 def test_binary_cross_entropy_backprop(network):
     np.random.seed(0)
-    logits = np.random.randn(10, 2)
-    target = np.ones(10).reshape(-1, 1)
+    logits = np.clip(np.random.randn(10, 2), 1e-5, 1 - 1e-5)
+    target = np.zeros((10, 2))
+    target[:5, 0] = 1
+    target[5:, 1] = 1
 
-    grad = network._binary_cross_entropy_backprop(target, logits).mean()
-
-    assert np.isclose(grad, -0.95)
+    grad = network._binary_cross_entropy_backprop(target, logits)
+    assert np.isclose(
+        grad.mean(), -250.007
+    ), "Binary cross entropy backward computation not close to manually calculated value"
 
 
 def test_mean_squared_error(network):
     np.random.seed(0)
-    inputs = np.random.randn(10, 1)
+    inputs = np.random.randn(10, 2)
+    targets = np.random.randn(10, 2)
+
+    loss = network._mean_squared_error(targets, inputs)
+    assert np.isclose(
+        loss, 2.2209999
+    ), "Mean squared error computation not close to manually calculated value"
 
 
-def test_mean_squared_error_backprop():
-    pass
+def test_mean_squared_error_backprop(network):
+    np.random.seed(0)
+    inputs = np.random.randn(10, 2)
+    targets = np.random.randn(10, 2)
+
+    grad = network._mean_squared_error_backprop(inputs, targets)
+    assert np.isclose(grad.mean(), 0.051358)
 
 
 def test_one_hot_encode():
-    pass
+    seqs = ["AGA", "ACTG"]
+
+    encodings_test = preprocess.one_hot_encode_seqs(seqs)
+
+    encodings = [
+        np.array([1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0]),
+        np.array([1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1]),
+    ]
+    assert np.allclose(encodings[0], encodings_test[0]) and np.allclose(
+        encodings[1], encodings_test[1]
+    ), "Encodings incorrect"
+
+    assert len(encodings) == len(encodings_test), "Returned wrong number of encodings"
 
 
 def test_sample_seqs():
-    pass
+    data = np.random.randn(10, 1).tolist()
+    labels = [0] * 10
+    labels[0] = 1
+
+    undersampled_data_pt = data[0]
+    sampled_seqs, sampled_labels = preprocess.sample_seqs(data, labels)
+    assert (
+        sampled_labels.count(0) == 9 and sampled_labels.count(1) == 9
+    ), "Class counts are not correct"
+    assert (
+        sampled_seqs.count(undersampled_data_pt) == 9
+    ), "Undersampled data point was not included to correct count"
