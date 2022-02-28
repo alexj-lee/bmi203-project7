@@ -402,7 +402,6 @@ class NeuralNetwork:
 
             self._param_dict[w_key] += self._lr * grad_dict[w_key].T
             self._param_dict[b_key] += self._lr * grad_dict[b_key]
-            # print("updated", self._lr, self._lr * grad_dict[w_key].T)
 
     def _get_loss(
         self, y_hat: ArrayLike, y: ArrayLike, loss: str, return_derivative=False
@@ -447,7 +446,7 @@ class NeuralNetwork:
             if train:
                 grad_dict = self.backprop(y, x, back_dict)
                 self.grad_dict = grad_dict
-                # self._update_params(grad_dict)
+                self._update_params(grad_dict)
                 batch_loss = grad_dict["loss"]
 
             else:
@@ -486,9 +485,11 @@ class NeuralNetwork:
             train_loss = self._eval_loader(X_train, y_train, train=True)
             test_loss = self._eval_loader(X_val, y_val, train=False)
 
-            print(train_loss, test_loss)
             train_losses.append(train_loss)
             test_losses.append(test_loss)
+
+        self.train_losses = train_losses
+        self.test_losses = test_losses
         return train_losses, test_losses
 
     def predict(self, X: ArrayLike) -> ArrayLike:
@@ -503,7 +504,6 @@ class NeuralNetwork:
             y_hat: ArrayLike
                 Prediction from the model.
         """
-        pass
 
     def _sigmoid(self, Z: ArrayLike) -> ArrayLike:
         """
