@@ -73,8 +73,13 @@ def test_single_backprop(network, data):
     assert np.allclose(dw, _dW)
 
 
-def test_predict():
-    pass
+def test_predict(network, data):
+    output = np.load("./test/outputs.npy")
+    test_output = network.predict(data)
+
+    assert np.allclose(
+        output, test_output
+    ), "Output and test output for predict function not equal"
 
 
 def test_binary_cross_entropy(network):

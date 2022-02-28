@@ -1,3 +1,5 @@
+![BuildStatus](https://github.com/alexj-lee/bmi203-project7/actions/workflows/test.yml/badge.svg)
+
 # Project 7
 Fully Connected Neural Network
 

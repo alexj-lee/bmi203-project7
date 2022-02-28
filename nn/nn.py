@@ -504,6 +504,8 @@ class NeuralNetwork:
             y_hat: ArrayLike
                 Prediction from the model.
         """
+        yhat, _ = self.forward(X)
+        return yhat
 
     def _sigmoid(self, Z: ArrayLike) -> ArrayLike:
         """
