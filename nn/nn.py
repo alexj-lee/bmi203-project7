@@ -400,8 +400,8 @@ class NeuralNetwork:
             w_key = f"W{layeridx+1}"
             b_key = f"b{layeridx+1}"
 
-            self._param_dict[w_key] += self._lr * grad_dict[w_key].T
-            self._param_dict[b_key] += self._lr * grad_dict[b_key]
+            self._param_dict[w_key] -= self._lr * grad_dict[w_key].T
+            self._param_dict[b_key] -= self._lr * grad_dict[b_key]
 
     def _get_loss(
         self, y_hat: ArrayLike, y: ArrayLike, loss: str, return_derivative=False
@@ -416,7 +416,10 @@ class NeuralNetwork:
         if y.ndim == 1:
             y = y.reshape(
                 -1, 1
-            )  # will reshape to (1, n) so that loss calcs dont add extra axis
+            )  # will reshape to (1, n) so that loss calcs dont add extra axis (for MSE)
+
+        self.y = y
+        self.y_hat = y_hat
 
         if self._loss_func == "mse":
             loss = self._mean_squared_error(y, y_hat)
@@ -443,6 +446,9 @@ class NeuralNetwork:
             x, back_dict = self.forward(x)
             self.back_dict = back_dict
 
+            if np.any(np.isnan(x)):
+                raise RuntimeError("Received nan value in forward pass.")
+
             if train:
                 grad_dict = self.backprop(y, x, back_dict)
                 self.grad_dict = grad_dict
@@ -450,7 +456,7 @@ class NeuralNetwork:
                 batch_loss = grad_dict["loss"]
 
             else:
-                batch_loss = self._get_loss(y, x, self._loss_func)
+                batch_loss = self._get_loss(x, y, self._loss_func)
 
             losses.append(batch_loss)
 
@@ -504,6 +510,9 @@ class NeuralNetwork:
             y_hat: ArrayLike
                 Prediction from the model.
         """
+        if isinstance(X, np.ndarray) is False:
+            X = np.array(X)
+            
         yhat, _ = self.forward(X)
         return yhat
 
@@ -582,7 +591,7 @@ class NeuralNetwork:
         return activation_derivative * dA
 
     def _binary_cross_entropy(
-        self, y: ArrayLike, y_hat: ArrayLike, eps: float = 1e-6
+        self, y: ArrayLike, y_hat: ArrayLike, eps: float = 1e-4
     ) -> float:
         """
         Binary cross entropy loss function.
@@ -661,7 +670,7 @@ class NeuralNetwork:
         """
 
         derivative = 2 * (y - y_hat) / y.size
-        return derivative
+        return -derivative
 
     def _loss_function(self, y: ArrayLike, y_hat: ArrayLike) -> float:
         """

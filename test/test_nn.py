@@ -51,9 +51,9 @@ def test_single_forward(network, data, forward_dict):
 
 
 def test_single_backprop(network, data):
-    da = np.load("test/da.npy")
-    db = np.load("test/db.npy")
-    dw = np.load("test/dw.npy")
+    da = -np.load("test/da.npy")  # accidentally saved these as negatives
+    db = -np.load("test/db.npy")
+    dw = -np.load("test/dw.npy")
 
     test_output, cache = network.forward(data)
 
@@ -91,7 +91,7 @@ def test_binary_cross_entropy(network):
 
     loss = network._binary_cross_entropy(target, logits)
     assert np.isclose(
-        loss, 3.197688
+        loss, 2.62189
     ), "Binary cross entropy loss computation not close to manually calculated value"
 
 
@@ -125,7 +125,7 @@ def test_mean_squared_error_backprop(network):
     targets = np.random.randn(10, 2)
 
     grad = network._mean_squared_error_backprop(inputs, targets)
-    assert np.isclose(grad.mean(), 0.051358)
+    assert np.isclose(grad.mean(), -0.051358)
 
 
 def test_one_hot_encode():
