@@ -145,6 +145,7 @@ class NeuralNetwork:
         # Saving architecture
         self.arch = nn_arch
         self.n_layers = len(nn_arch)  # just to keep track of number of layers
+
         # Saving hyperparameters
         self._lr = lr
         self._seed = seed
@@ -217,6 +218,7 @@ class NeuralNetwork:
 
         z = A_prev.dot(W_curr.T)
         z += b_curr.T
+
         if activation:
             if activation == "sigmoid":
                 a = self._sigmoid(z)
@@ -249,7 +251,10 @@ class NeuralNetwork:
         _a = X
         backprop_dict = {}
 
-        backprop_dict["a0"] = X
+        backprop_dict[
+            "a0"
+        ] = X  # record initial activations so we can compute the last layer gradient later
+
         for layeridx in range(self.n_layers):
             w_key = f"W{layeridx+1}"
             b_key = f"b{layeridx+1}"
@@ -262,7 +267,7 @@ class NeuralNetwork:
             a, z = self._single_forward(W, b, _a, activation)
             backprop_dict[f"a{layeridx+1}"] = a
             backprop_dict[f"z{layeridx+1}"] = z
-            _a = a
+            _a = a  # store previous activation
 
         return a, backprop_dict
 
@@ -301,18 +306,21 @@ class NeuralNetwork:
             db_curr: ArrayLike
                 Partial derivative of loss function with respect to current layer bias matrix.
         """
+
         if activation == "sigmoid":
             dA_dZ = self._sigmoid_backprop(dA_curr, Z_curr)
         elif activation == "relu":
             dA_dZ = self._relu_backprop(dA_curr, Z_curr)
-        else:
+        else:  # no activation
             dA_dZ = dA_curr
 
         dA_prev = dA_dZ.dot(W_curr)
         dW_curr = A_prev.T.dot(dA_dZ)
-        db_curr = dA_dZ.sum(0)[:, None]
+        db_curr = dA_dZ.sum(0)[:, None]  # row sums to make correct shape (nactiv x 1)
 
-        dA_prev = dA_dZ.dot(W_curr)
+        dA_prev = dA_dZ.dot(
+            W_curr
+        )  # store activation gradient so we can pass to next layer
         return dA_prev, dW_curr, db_curr
 
     def backprop(self, y: ArrayLike, y_hat: ArrayLike, cache: Dict[str, ArrayLike]):
@@ -348,7 +356,7 @@ class NeuralNetwork:
             w_key = f"W{layeridx+1}"
             b_key = f"b{layeridx+1}"
             activation_key = f"f{layeridx+1}"
-            a_key = f"a{layeridx}"
+            a_key = f"a{layeridx}"  # previous not current layer activation
             z_key = f"z{layeridx+1}"
 
             W = self._param_dict[w_key]
@@ -359,21 +367,6 @@ class NeuralNetwork:
 
             activation = self._param_dict[activation_key]
 
-            #            print(
-            #                "w",
-            #                W.shape,
-            #                "b",
-            #                b.shape,
-            #                "z",
-            #                z.shape,
-            #                "a",
-            #                a.shape,
-            #                "da",
-            #                _dA.shape,
-            #                "bkey",
-            #                b_key,
-            #            )
-            #
             _dA, dW, db = self._single_backprop(W, b, z, a, _dA, activation)
             grad_dict[w_key] = dW
             grad_dict[b_key] = db
@@ -416,7 +409,7 @@ class NeuralNetwork:
         if y.ndim == 1:
             y = y.reshape(
                 -1, 1
-            )  # will reshape to (1, n) so that loss calcs dont add extra axis (for MSE)
+            )  # will reshape to (1, n) so that loss calcs dont add extra axis (for MSE this will cause a problem)
 
         self.y = y
         self.y_hat = y_hat
@@ -440,6 +433,20 @@ class NeuralNetwork:
         return losses
 
     def _eval_loader(self, X: ArrayLike, y: ArrayLike, train: bool = True):
+        """
+        Iterates in batches over X, y pairs and if `true` will update parameters.
+
+        Args:
+            X (ArrayLike): input array
+            y (ArrayLike): labels / regression or autoencoder targets
+            train (bool, optional): flag for whether to update parameters. Defaults to True.
+
+        Raises:
+            RuntimeError: _description_
+
+        Returns:
+            float: loss average over the X, y pairs and given self.._loss_func
+        """
 
         losses = []
         for x, y in _batch_iterable(zip(X, y), self._batch_size):
@@ -451,7 +458,9 @@ class NeuralNetwork:
 
             if train:
                 grad_dict = self.backprop(y, x, back_dict)
-                self.grad_dict = grad_dict
+                self.grad_dict = (
+                    grad_dict  # just so i could inspect values during testing
+                )
                 self._update_params(grad_dict)
                 batch_loss = grad_dict["loss"]
 
@@ -488,13 +497,15 @@ class NeuralNetwork:
         train_losses = []
         test_losses = []
         for epoch in range(self._epochs):
-            train_loss = self._eval_loader(X_train, y_train, train=True)
-            test_loss = self._eval_loader(X_val, y_val, train=False)
+            train_loss = self._eval_loader(
+                X_train, y_train, train=True
+            )  # will be float
+            test_loss = self._eval_loader(X_val, y_val, train=False)  # float also
 
             train_losses.append(train_loss)
             test_losses.append(test_loss)
 
-        self.train_losses = train_losses
+        self.train_losses = train_losses  # for later inspection/bookkeeping
         self.test_losses = test_losses
         return train_losses, test_losses
 
@@ -512,7 +523,7 @@ class NeuralNetwork:
         """
         if isinstance(X, np.ndarray) is False:
             X = np.array(X)
-            
+
         yhat, _ = self.forward(X)
         return yhat
 
@@ -607,6 +618,7 @@ class NeuralNetwork:
                 Average loss over mini-batch.
         """
 
+        # just in case my own error in  testing
         assert (
             0 <= np.min(y_hat) <= np.max(y_hat) <= 1
         ), "Inputs must be between 0 and 1"
