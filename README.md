@@ -1,5 +1,7 @@
 ![BuildStatus](https://github.com/alexj-lee/bmi203-project7/actions/workflows/test.yml/badge.svg)
 
+See https://alexj-lee.github.io/bmi203-project7/writeup for html version of the jupyter notebook
+
 # Project 7
 Fully Connected Neural Network
 
