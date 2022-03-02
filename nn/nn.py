@@ -338,12 +338,12 @@ class NeuralNetwork:
                 Dictionary containing the gradient information from this pass of backprop.
         """
 
-        loss, _dA = self._get_loss(
+        loss, _a = self._get_loss(
             y_hat, y, self._loss_func, return_derivative=True
         )  # derivative of loss wrt activations
 
         grad_dict = {}
-        grad_dict["_dA"] = _dA
+        grad_dict["_dA"] = _a
         grad_dict["y"] = y
         grad_dict["yhat"] = y_hat
 
@@ -362,7 +362,7 @@ class NeuralNetwork:
 
             activation = self._param_dict[activation_key]
 
-            _dA, dW, db = self._single_backprop(W, b, z, a, _dA, activation)
+            _a, dW, db = self._single_backprop(W, b, z, a, _a, activation)
             grad_dict[w_key] = dW
             grad_dict[b_key] = db
             self.grad_dict = grad_dict
