@@ -313,14 +313,11 @@ class NeuralNetwork:
             dA_dZ = self._relu_backprop(dA_curr, Z_curr)
         else:  # no activation
             dA_dZ = dA_curr
-
+        
         dA_prev = dA_dZ.dot(W_curr)
         dW_curr = A_prev.T.dot(dA_dZ)
         db_curr = dA_dZ.sum(0)[:, None]  # row sums to make correct shape (nactiv x 1)
 
-        dA_prev = dA_dZ.dot(
-            W_curr
-        )  # store activation gradient so we can pass to next layer
         return dA_prev, dW_curr, db_curr
 
     def backprop(self, y: ArrayLike, y_hat: ArrayLike, cache: Dict[str, ArrayLike]):
@@ -344,8 +341,6 @@ class NeuralNetwork:
         loss, _dA = self._get_loss(
             y_hat, y, self._loss_func, return_derivative=True
         )  # derivative of loss wrt activations
-
-        _dA = _dA
 
         grad_dict = {}
         grad_dict["_dA"] = _dA
