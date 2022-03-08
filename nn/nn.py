@@ -313,7 +313,7 @@ class NeuralNetwork:
             dA_dZ = self._relu_backprop(dA_curr, Z_curr)
         else:  # no activation
             dA_dZ = dA_curr
-        
+
         dA_prev = dA_dZ.dot(W_curr)
         dW_curr = A_prev.T.dot(dA_dZ)
         db_curr = dA_dZ.sum(0)[:, None]  # row sums to make correct shape (nactiv x 1)
@@ -578,7 +578,9 @@ class NeuralNetwork:
 
         return activation_derivative * dA
 
-    def _relu_backprop(self, dA: ArrayLike, Z: ArrayLike) -> ArrayLike:
+    def _relu_backprop(
+        self, dA: ArrayLike, Z: ArrayLike, eps: float = 1e-5
+    ) -> ArrayLike:
         """
         ReLU derivative for backprop.
 
@@ -592,7 +594,7 @@ class NeuralNetwork:
             dZ: ArrayLike
                 Partial derivative of current layer Z matrix.
         """
-        activation_derivative = np.where(Z > 0, 1, 0)
+        activation_derivative = np.where(Z > 0, 1, eps)
 
         return activation_derivative * dA
 
@@ -618,8 +620,11 @@ class NeuralNetwork:
             0 <= np.min(y_hat) <= np.max(y_hat) <= 1
         ), "Inputs must be between 0 and 1"
 
-        loss = (1 - y) * np.log(1 - y_hat + eps) + y * np.log(y_hat + eps)
-        return -loss.mean()
+        loss = ((1 - y) * np.log(1 - y_hat + eps)).sum() + (
+            y * np.log(y_hat + eps)
+        ).sum()
+        loss = loss / len(y)
+        return -loss
 
     def _binary_cross_entropy_backprop(
         self, y: ArrayLike, y_hat: ArrayLike

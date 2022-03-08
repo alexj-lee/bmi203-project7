@@ -91,7 +91,7 @@ def test_binary_cross_entropy(network):
 
     loss = network._binary_cross_entropy(target, logits)
     assert np.isclose(
-        loss, 2.62189
+        loss, 5.2437839
     ), "Binary cross entropy loss computation not close to manually calculated value"
 
 
